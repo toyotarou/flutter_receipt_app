@@ -10,7 +10,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:riverpod/src/framework.dart';
 
 import 'collections/saved_receipt.dart';
-import 'pages/receipt_page.dart';
+import 'pages/home_page.dart';
 import 'repository/receipts_repository.dart';
 
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
@@ -18,7 +18,7 @@ final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 final GoRouter router = GoRouter(
   navigatorKey: rootNavigatorKey,
   initialLocation: '/',
-  routes: <RouteBase>[GoRoute(path: '/', builder: (BuildContext context, GoRouterState state) => const ReceiptPage())],
+  routes: <RouteBase>[GoRoute(path: '/', builder: (BuildContext context, GoRouterState state) => const HomePage())],
 );
 
 Future<void> main() async {

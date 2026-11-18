@@ -8,17 +8,24 @@ import '../utility/extensions.dart';
 import 'parts/receipt_dialog.dart';
 import 'saved_receipt_detail_alert.dart';
 
-/// 保存したレシートの一覧
+/// 保存したレシートの一覧（date を渡したときは、その日のレシートだけを出す）
 class SavedReceiptListAlert extends HookConsumerWidget {
-  const SavedReceiptListAlert({super.key});
+  const SavedReceiptListAlert({super.key, this.date});
+
+  /// 絞り込む日付（yyyy-MM-dd）。null のときは全件
+  final String? date;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // アラートを開いたときと、詳細アラートを閉じたとき（削除したかもしれないので）に読み直す
     final ValueNotifier<int> reloadCount = useState(0);
     final Future<List<SavedReceipt>> receiptListFuture = useMemoized(
-      () => ref.read(receiptsRepositoryProvider).getReceiptList(),
-      <Object?>[reloadCount.value],
+      () {
+        final ReceiptsRepository repository = ref.read(receiptsRepositoryProvider);
+        final String? targetDate = date;
+        return targetDate == null ? repository.getReceiptList() : repository.getReceiptListByDate(date: targetDate);
+      },
+      <Object?>[reloadCount.value, date],
     );
     final AsyncSnapshot<List<SavedReceipt>> receiptListSnapshot = useFuture(receiptListFuture);
 
@@ -38,8 +45,11 @@ class SavedReceiptListAlert extends HookConsumerWidget {
         children: <Widget>[
           Row(
             children: <Widget>[
-              const Expanded(
-                child: Text('保存したレシート', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              Expanded(
+                child: Text(
+                  date == null ? '保存したレシート' : '保存したレシート（$date）',
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
               ),
               if (receiptListSnapshot.hasData) Text('${receiptListSnapshot.data!.length}件'),
             ],

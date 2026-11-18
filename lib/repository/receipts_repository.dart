@@ -13,6 +13,11 @@ final Provider<ReceiptsRepository> receiptsRepositoryProvider = Provider<Receipt
   (Ref ref) => ReceiptsRepository(isar: ref.watch(isarProvider)),
 );
 
+/// 保存済みのレシート一覧。保存・削除すると自動で新しい一覧が流れてくる（ホームのタブ・カレンダー用）
+final StreamProvider<List<SavedReceipt>> savedReceiptListProvider = StreamProvider<List<SavedReceipt>>(
+  (Ref ref) => ref.watch(receiptsRepositoryProvider).watchReceiptList(),
+);
+
 class ReceiptsRepository {
   ReceiptsRepository({required this.isar});
 
@@ -70,9 +75,17 @@ class ReceiptsRepository {
   /// 保存済みのレシートの件数
   Future<int> countReceipts() async => getReceiptCollection().count();
 
-  /// 保存済みのレシート一覧（日付・時刻の新しい順）
+  /// 保存済みのレシート一覧（日付・時刻の古い順。リストのアラート用）
   Future<List<SavedReceipt>> getReceiptList() async =>
-      getReceiptCollection().where().sortByDateDesc().thenByTimeDesc().findAll();
+      getReceiptCollection().where().sortByDate().thenByTime().findAll();
+
+  /// 1日分のレシート一覧（時刻の古い順。カレンダーの日付から開くリスト用）
+  Future<List<SavedReceipt>> getReceiptListByDate({required String date}) async =>
+      getReceiptCollection().where().dateEqualTo(date).sortByTime().findAll();
+
+  /// 保存済みのレシート一覧を見張る（最初に今の一覧を流し、そのあとは変わるたびに流す）
+  Stream<List<SavedReceipt>> watchReceiptList() =>
+      getReceiptCollection().where().sortByDateDesc().thenByTimeDesc().watch(fireImmediately: true);
 
   /// 1枚のレシートの品目（レシートの並び順）
   /// receiptId のインデックスで引くと、同じ receiptId の中は id の昇順で返る（＝読み取った順）ので、並べ替えは不要

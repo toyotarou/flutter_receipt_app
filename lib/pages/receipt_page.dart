@@ -1,181 +1,183 @@
-import 'dart:convert';
-import 'dart:io';
+// import 'dart:convert';
+// import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_hooks/flutter_hooks.dart';
-import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:image_picker/image_picker.dart';
+// import 'package:flutter_hooks/flutter_hooks.dart';
+// import 'package:hooks_riverpod/hooks_riverpod.dart';
+// import 'package:image_picker/image_picker.dart';
 
-import '../api/receipt_api.dart';
+// import '../api/receipt_api.dart';
 import '../models/receipt.dart';
-import '../repository/receipts_repository.dart';
+// import '../repository/receipts_repository.dart';
 import '../utility/extensions.dart';
-import 'parts/receipt_dialog.dart';
-import 'saved_receipt_list_alert.dart';
+// import 'parts/receipt_dialog.dart';
+// import 'saved_receipt_list_alert.dart';
 
-class ReceiptPage extends HookConsumerWidget {
-  const ReceiptPage({super.key});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final ValueNotifier<bool> isLoading = useState(false);
-    final ValueNotifier<String?> imagePath = useState<String?>(null);
-    final ValueNotifier<Receipt?> receipt = useState<Receipt?>(null);
-    final ValueNotifier<String?> rawJsonText = useState<String?>(null);
-    final ValueNotifier<String?> errorText = useState<String?>(null);
-    final ValueNotifier<bool> isSaved = useState(false);
-
-    // 画像をサーバへ送り、結果を表示する
-    Future<void> sendImage(String path) async {
-      debugPrint('[receipt] 送信開始: $path');
-      imagePath.value = path;
-      receipt.value = null;
-      rawJsonText.value = null;
-      errorText.value = null;
-      isSaved.value = false;
-      isLoading.value = true;
-
-      try {
-        final Map<String, dynamic> json = await ref.read(receiptApiProvider).analyze(path);
-        debugPrint('[receipt] 送信成功');
-        rawJsonText.value = const JsonEncoder.withIndent('  ').convert(json);
-        receipt.value = Receipt.fromJson(json);
-      } catch (e) {
-        debugPrint('[receipt] 送信エラー: $e');
-        errorText.value = e.toString();
-      } finally {
-        isLoading.value = false;
-      }
-    }
-
-    // Android：カメラ中にアプリが終了させられた場合、撮った写真をここで取り戻す
-    useEffect(() {
-      if (Platform.isAndroid) {
-        ImagePicker().retrieveLostData().then((LostDataResponse response) {
-          if (response.isEmpty) {
-            return;
-          }
-          debugPrint('[receipt] 失われた画像を回復');
-          final XFile? file = response.file;
-          if (file != null) {
-            sendImage(file.path);
-          } else if (response.exception != null) {
-            errorText.value = '画像の回復に失敗しました: ${response.exception}';
-          }
-        });
-      }
-      return null;
-    }, const <Object?>[]);
-
-    // 読み取り結果を内蔵DB（Isar）に保存する
-    Future<void> saveReceipt(Receipt data) async {
-      try {
-        final ReceiptsRepository repository = ref.read(receiptsRepositoryProvider);
-        final int receiptId = await repository.saveReceipt(receipt: data);
-        final int count = await repository.countReceipts();
-        debugPrint('[receipt] 保存成功: id=$receiptId 保存済み=$count件');
-        isSaved.value = true;
-        if (!context.mounted) {
-          return;
-        }
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('保存しました（保存済み：$count件）')));
-      } catch (e) {
-        debugPrint('[receipt] 保存エラー: $e');
-        errorText.value = '保存でエラー: $e';
-      }
-    }
-
-    Future<void> pickAndSend(ImageSource source) async {
-      debugPrint('[receipt] 画像選択開始: $source');
-      errorText.value = null;
-
-      XFile? picked;
-      try {
-        // 長辺1600px・JPEG品質85に縮小してから送る（PHPのアップロード上限2MBに収めるため）
-        picked = await ImagePicker().pickImage(source: source, maxWidth: 1600, maxHeight: 1600, imageQuality: 85);
-      } catch (e) {
-        debugPrint('[receipt] 画像選択エラー: $e');
-        errorText.value = '画像の取得でエラー: $e';
-        return;
-      }
-
-      if (picked == null) {
-        debugPrint('[receipt] 画像が null');
-        errorText.value = '画像を受け取れませんでした（キャンセルした場合は、もう一度お試しください）';
-        return;
-      }
-
-      await sendImage(picked.path);
-    }
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('レシート読み取り'),
-        actions: <Widget>[
-          IconButton(
-            icon: const Icon(Icons.list_alt),
-            tooltip: '保存したレシート',
-            onPressed: () => ReceiptDialog(context: context, widget: const SavedReceiptListAlert()),
-          ),
-        ],
-      ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: <Widget>[
-              Row(
-                children: <Widget>[
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: isLoading.value ? null : () => pickAndSend(ImageSource.camera),
-                      icon: const Icon(Icons.photo_camera),
-                      label: const Text('カメラで撮る'),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: isLoading.value ? null : () => pickAndSend(ImageSource.gallery),
-                      icon: const Icon(Icons.photo_library),
-                      label: const Text('写真から選ぶ'),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              if (imagePath.value != null) Image.file(File(imagePath.value!), height: 160, fit: BoxFit.contain),
-              const SizedBox(height: 16),
-              if (isLoading.value)
-                const Column(
-                  children: <Widget>[CircularProgressIndicator(), SizedBox(height: 8), Text('AIが読み取り中です（10〜30秒ほどかかります）')],
-                ),
-              if (errorText.value != null) Text(errorText.value!, style: const TextStyle(color: Colors.red)),
-              if (receipt.value != null) ReceiptResultView(receipt: receipt.value!),
-              if (receipt.value != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: FilledButton.icon(
-                    onPressed: isSaved.value ? null : () => saveReceipt(receipt.value!),
-                    icon: Icon(isSaved.value ? Icons.check : Icons.save),
-                    label: Text(isSaved.value ? '保存しました' : 'この内容を保存する'),
-                  ),
-                ),
-              if (rawJsonText.value != null)
-                ExpansionTile(
-                  title: const Text('JSONを見る（確認用）'),
-                  children: <Widget>[
-                    SelectableText(rawJsonText.value!, style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
-                  ],
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
+// 以前のホーム画面。撮影・読み取り・保存の機能は receipt_camera_alert.dart（ReceiptCameraAlert）に移し、
+// ホーム画面は home_page.dart（HomePage）に替えたため、使わなくなった。念のためコメントアウトで残す
+// class ReceiptPage extends HookConsumerWidget {
+//   const ReceiptPage({super.key});
+//
+//   @override
+//   Widget build(BuildContext context, WidgetRef ref) {
+//     final ValueNotifier<bool> isLoading = useState(false);
+//     final ValueNotifier<String?> imagePath = useState<String?>(null);
+//     final ValueNotifier<Receipt?> receipt = useState<Receipt?>(null);
+//     final ValueNotifier<String?> rawJsonText = useState<String?>(null);
+//     final ValueNotifier<String?> errorText = useState<String?>(null);
+//     final ValueNotifier<bool> isSaved = useState(false);
+//
+//     // 画像をサーバへ送り、結果を表示する
+//     Future<void> sendImage(String path) async {
+//       debugPrint('[receipt] 送信開始: $path');
+//       imagePath.value = path;
+//       receipt.value = null;
+//       rawJsonText.value = null;
+//       errorText.value = null;
+//       isSaved.value = false;
+//       isLoading.value = true;
+//
+//       try {
+//         final Map<String, dynamic> json = await ref.read(receiptApiProvider).analyze(path);
+//         debugPrint('[receipt] 送信成功');
+//         rawJsonText.value = const JsonEncoder.withIndent('  ').convert(json);
+//         receipt.value = Receipt.fromJson(json);
+//       } catch (e) {
+//         debugPrint('[receipt] 送信エラー: $e');
+//         errorText.value = e.toString();
+//       } finally {
+//         isLoading.value = false;
+//       }
+//     }
+//
+//     // Android：カメラ中にアプリが終了させられた場合、撮った写真をここで取り戻す
+//     useEffect(() {
+//       if (Platform.isAndroid) {
+//         ImagePicker().retrieveLostData().then((LostDataResponse response) {
+//           if (response.isEmpty) {
+//             return;
+//           }
+//           debugPrint('[receipt] 失われた画像を回復');
+//           final XFile? file = response.file;
+//           if (file != null) {
+//             sendImage(file.path);
+//           } else if (response.exception != null) {
+//             errorText.value = '画像の回復に失敗しました: ${response.exception}';
+//           }
+//         });
+//       }
+//       return null;
+//     }, const <Object?>[]);
+//
+//     // 読み取り結果を内蔵DB（Isar）に保存する
+//     Future<void> saveReceipt(Receipt data) async {
+//       try {
+//         final ReceiptsRepository repository = ref.read(receiptsRepositoryProvider);
+//         final int receiptId = await repository.saveReceipt(receipt: data);
+//         final int count = await repository.countReceipts();
+//         debugPrint('[receipt] 保存成功: id=$receiptId 保存済み=$count件');
+//         isSaved.value = true;
+//         if (!context.mounted) {
+//           return;
+//         }
+//         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('保存しました（保存済み：$count件）')));
+//       } catch (e) {
+//         debugPrint('[receipt] 保存エラー: $e');
+//         errorText.value = '保存でエラー: $e';
+//       }
+//     }
+//
+//     Future<void> pickAndSend(ImageSource source) async {
+//       debugPrint('[receipt] 画像選択開始: $source');
+//       errorText.value = null;
+//
+//       XFile? picked;
+//       try {
+//         // 長辺1600px・JPEG品質85に縮小してから送る（PHPのアップロード上限2MBに収めるため）
+//         picked = await ImagePicker().pickImage(source: source, maxWidth: 1600, maxHeight: 1600, imageQuality: 85);
+//       } catch (e) {
+//         debugPrint('[receipt] 画像選択エラー: $e');
+//         errorText.value = '画像の取得でエラー: $e';
+//         return;
+//       }
+//
+//       if (picked == null) {
+//         debugPrint('[receipt] 画像が null');
+//         errorText.value = '画像を受け取れませんでした（キャンセルした場合は、もう一度お試しください）';
+//         return;
+//       }
+//
+//       await sendImage(picked.path);
+//     }
+//
+//     return Scaffold(
+//       appBar: AppBar(
+//         title: const Text('レシート読み取り'),
+//         actions: <Widget>[
+//           IconButton(
+//             icon: const Icon(Icons.list_alt),
+//             tooltip: '保存したレシート',
+//             onPressed: () => ReceiptDialog(context: context, widget: const SavedReceiptListAlert()),
+//           ),
+//         ],
+//       ),
+//       body: SafeArea(
+//         child: SingleChildScrollView(
+//           padding: const EdgeInsets.all(16),
+//           child: Column(
+//             crossAxisAlignment: CrossAxisAlignment.stretch,
+//             children: <Widget>[
+//               Row(
+//                 children: <Widget>[
+//                   Expanded(
+//                     child: FilledButton.icon(
+//                       onPressed: isLoading.value ? null : () => pickAndSend(ImageSource.camera),
+//                       icon: const Icon(Icons.photo_camera),
+//                       label: const Text('カメラで撮る'),
+//                     ),
+//                   ),
+//                   const SizedBox(width: 12),
+//                   Expanded(
+//                     child: OutlinedButton.icon(
+//                       onPressed: isLoading.value ? null : () => pickAndSend(ImageSource.gallery),
+//                       icon: const Icon(Icons.photo_library),
+//                       label: const Text('写真から選ぶ'),
+//                     ),
+//                   ),
+//                 ],
+//               ),
+//               const SizedBox(height: 16),
+//               if (imagePath.value != null) Image.file(File(imagePath.value!), height: 160, fit: BoxFit.contain),
+//               const SizedBox(height: 16),
+//               if (isLoading.value)
+//                 const Column(
+//                   children: <Widget>[CircularProgressIndicator(), SizedBox(height: 8), Text('AIが読み取り中です（10〜30秒ほどかかります）')],
+//                 ),
+//               if (errorText.value != null) Text(errorText.value!, style: const TextStyle(color: Colors.red)),
+//               if (receipt.value != null) ReceiptResultView(receipt: receipt.value!),
+//               if (receipt.value != null)
+//                 Padding(
+//                   padding: const EdgeInsets.only(top: 8),
+//                   child: FilledButton.icon(
+//                     onPressed: isSaved.value ? null : () => saveReceipt(receipt.value!),
+//                     icon: Icon(isSaved.value ? Icons.check : Icons.save),
+//                     label: Text(isSaved.value ? '保存しました' : 'この内容を保存する'),
+//                   ),
+//                 ),
+//               if (rawJsonText.value != null)
+//                 ExpansionTile(
+//                   title: const Text('JSONを見る（確認用）'),
+//                   children: <Widget>[
+//                     SelectableText(rawJsonText.value!, style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
+//                   ],
+//                 ),
+//             ],
+//           ),
+//         ),
+//       ),
+//     );
+//   }
+// }
 
 /// 読み取り結果をレシート風に表示する
 class ReceiptResultView extends StatelessWidget {
