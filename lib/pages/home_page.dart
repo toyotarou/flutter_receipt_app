@@ -3,6 +3,8 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../collections/saved_receipt.dart';
 import '../repository/receipts_repository.dart';
+import 'csv_data/data_export_alert.dart';
+import 'csv_data/data_import_alert.dart';
 import 'monthly_receipt_calendar_page.dart';
 import 'parts/receipt_dialog.dart';
 import 'receipt_camera_alert.dart';
@@ -37,6 +39,14 @@ class HomePage extends ConsumerWidget {
               tooltip: '保存したレシート',
               onPressed: () => ReceiptDialog(context: context, widget: const SavedReceiptListAlert()),
             ),
+            // ドロア（右から出す）を開く。Scaffold の下の context が要るので Builder で包む
+            Builder(
+              builder: (BuildContext scaffoldContext) => IconButton(
+                icon: const Icon(Icons.menu),
+                tooltip: 'メニュー',
+                onPressed: () => Scaffold.of(scaffoldContext).openEndDrawer(),
+              ),
+            ),
           ],
           bottom: TabBar(
             isScrollable: true,
@@ -44,6 +54,7 @@ class HomePage extends ConsumerWidget {
             tabs: <Widget>[for (final String yearmonth in yearmonthList) Tab(text: yearmonth)],
           ),
         ),
+        endDrawer: _buildDrawer(context: context),
         body: TabBarView(
           children: <Widget>[
             for (final String yearmonth in yearmonthList)
@@ -54,6 +65,53 @@ class HomePage extends ConsumerWidget {
               ),
           ],
         ),
+      ),
+    );
+  }
+
+  /// ドロア（データエクスポート・データインポート）
+  Widget _buildDrawer({required BuildContext context}) {
+    return Drawer(
+      backgroundColor: Colors.blueGrey.withValues(alpha: 0.2),
+      child: SingleChildScrollView(
+        child: Container(
+          padding: const EdgeInsets.only(left: 10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              const SizedBox(height: 60),
+              _buildDrawerMenu(
+                label: 'データエクスポート',
+                onTap: () => ReceiptDialog(context: context, widget: const DataExportAlert()),
+              ),
+              _buildDrawerMenu(
+                label: 'データインポート',
+                onTap: () => ReceiptDialog(context: context, widget: const DataImportAlert()),
+              ),
+              Divider(color: Colors.white.withValues(alpha: 0.4), thickness: 5),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// ドロアのメニュー1行
+  Widget _buildDrawerMenu({required String label, required VoidCallback onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Row(
+        children: <Widget>[
+          Icon(Icons.arrow_right, color: Colors.white.withValues(alpha: 0.6)),
+          Expanded(
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 3),
+              margin: const EdgeInsets.all(5),
+              child: Text(label),
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -91,4 +91,21 @@ class ReceiptsRepository {
   /// receiptId のインデックスで引くと、同じ receiptId の中は id の昇順で返る（＝読み取った順）ので、並べ替えは不要
   Future<List<SavedReceiptItem>> getItemList({required int receiptId}) async =>
       getItemCollection().where().receiptIdEqualTo(receiptId).findAll();
+
+  /// 保存済みの品目すべて（id の昇順。データエクスポート用）
+  Future<List<SavedReceiptItem>> getAllItemList() async => getItemCollection().where().findAll();
+
+  /// レシートを一括登録する（データインポート用）。id はそのまま使うので、同じ id があれば上書きになる
+  Future<void> inputReceiptList({required List<SavedReceipt> receiptList}) async {
+    await isar.writeTxn(() async {
+      await getReceiptCollection().putAll(receiptList);
+    });
+  }
+
+  /// 品目を一括登録する（データインポート用）。id はそのまま使うので、同じ id があれば上書きになる
+  Future<void> inputItemList({required List<SavedReceiptItem> itemList}) async {
+    await isar.writeTxn(() async {
+      await getItemCollection().putAll(itemList);
+    });
+  }
 }
